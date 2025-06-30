@@ -10,7 +10,12 @@ Prepare environment:
 uv venv -p 3.12
 # Install PyTorch first to ensure we get a specific version
 uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
-uv pip install lightning
+# Pinning to 2.5.0 due to this bug
+# https://github.com/mlflow/mlflow/issues/15111
+uv pip install lightning==2.5.0
+uv pip install pytorch-lightning==2.5.0
+# Only -skinny is required as we don't need the entire server package
+uv pip install mlflow-skinny
 uv pip install nvidia-ml-py psutil
 ```
 

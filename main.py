@@ -7,12 +7,14 @@ import lightning as L
 
 import pynvml
 
-from lightning.pytorch.callbacks import DeviceStatsMonitor
+from lightning.pytorch.callbacks import DeviceStatsMonitor, LearningRateMonitor
 from mlflow.system_metrics.system_metrics_monitor import SystemMetricsMonitor
 from pytorch_lightning.loggers import CSVLogger, MLFlowLogger
 
 MATMUL_PRECISION = "medium" 
 torch.set_float32_matmul_precision(MATMUL_PRECISION)
+BATCH_SIZE = 256 if torch.cuda.is_available() else 64
+NUM_WORKERS = int(os.cpu_count() / 2)
 
 # Adopted from sample provided in https://github.com/Lightning-AI/pytorch-lightning/issues/20563
 class MLFlowSystemMonitorCallback(L.Callback):
@@ -122,7 +124,7 @@ def main() -> None:
         log_environment_details(mlf_logger)  # Log environment details
         loggers.append(mlf_logger)
     
-    callbacks = []
+    callbacks = [LearningRateMonitor(logging_interval="step")]
     if are_device_stats_enabled:
         # If MLFLOW_ENABLE_SYSTEM_METRICS_LOGGING is set to true, add DeviceStatsMonitor
         callbacks.append(DeviceStatsMonitor(cpu_stats=True))
@@ -131,12 +133,23 @@ def main() -> None:
     # -------------------
     # Step 3: Train
     # -------------------
+    train_loader = data.DataLoader(train, num_workers=NUM_WORKERS, batch_size=BATCH_SIZE, pin_memory=True, prefetch_factor=2)
+    val_loader = data.DataLoader(val, num_workers=NUM_WORKERS, batch_size=BATCH_SIZE, pin_memory=True, prefetch_factor=2)
+
     autoencoder = LitAutoEncoder()
-    trainer = L.Trainer(logger=loggers, callbacks=callbacks)
+    trainer = L.Trainer(
+        max_epochs=10,
+        accelerator="auto",
+        devices=1,
+        precision=16,
+        logger=loggers,
+        callbacks=callbacks,
+        benchmark=True,
+    )
     trainer.fit(
         autoencoder,
-        data.DataLoader(train),
-        data.DataLoader(dataset=val, num_workers=7)
+        train_loader,
+        val_loader,
     )
 
 if __name__ == "__main__":
